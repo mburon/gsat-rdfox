@@ -1,0 +1,1 @@
+<https://oxfordsemantic.tech/RDFox/getting-started/Parent>[?y] :- <https://oxfordsemantic.tech/RDFox/getting-started/hasParent>[?x,?y].

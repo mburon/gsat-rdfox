@@ -1,0 +1,137 @@
+package uk.ac.ox.cs.gsat.rdfox;
+
+import java.io.BufferedInputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
+
+import tech.oxfordsemantic.jrdfox.Prefixes;
+import tech.oxfordsemantic.jrdfox.client.ConnectionFactory;
+import tech.oxfordsemantic.jrdfox.client.Cursor;
+import tech.oxfordsemantic.jrdfox.client.DataStoreConnection;
+import tech.oxfordsemantic.jrdfox.client.RuleInfo;
+import tech.oxfordsemantic.jrdfox.client.ServerConnection;
+import tech.oxfordsemantic.jrdfox.client.TransactionType;
+import tech.oxfordsemantic.jrdfox.client.UpdateType;
+import tech.oxfordsemantic.jrdfox.exceptions.JRDFoxException;
+import tech.oxfordsemantic.jrdfox.logic.datalog.Rule;
+import uk.ac.ox.cs.gsat.Materializer;
+import uk.ac.ox.cs.pdq.fol.TGD;
+
+public class RDFoxMaterializer implements Materializer {
+
+    protected final static String SERVER_URL = "rdfox:local";
+    protected final String exportFormat = "application/n-triples"; //"text/turtle";
+    protected final String roleName = "admin";
+    protected final String password = "admin";
+    protected final String dataStoreName = "store";
+    protected final String dirPath = "RDFox-data";
+
+    protected final Map<String, String> serverParameters = new HashMap<>();
+    protected final ServerConnection sConn;
+    protected final DataStoreConnection dsConn;
+    protected final Prefixes prefixes = new Prefixes();
+
+    public RDFoxMaterializer() throws JRDFoxException {
+
+        String dataDir = new File(dirPath).getAbsolutePath();
+        serverParameters.put("persist-ds", "off");
+        serverParameters.put("persist-roles", "off");
+        serverParameters.put("server-directory", dataDir);
+
+        // raise an exception if the server is already started
+        try {
+            String[] warnings = ConnectionFactory.startLocalServer(serverParameters);
+        } catch (JRDFoxException e) {
+        }
+
+        if (ConnectionFactory.getNumberOfLocalServerRoles() == 0) {
+            ConnectionFactory.createFirstLocalServerRole(roleName, password);
+        }
+
+        sConn = ConnectionFactory.newServerConnection(SERVER_URL, roleName, password);
+
+        if (!sConn.containsDataStore(dataStoreName)) {
+            sConn.createDataStore(dataStoreName, new HashMap<String, String>());
+        }
+
+        dsConn = sConn.newDataStoreConnection(dataStoreName);
+    }
+
+    @Override
+    public long materialize(String inputDataFile, Collection<TGD> fullTGDs, OutputStream outputStream)
+            throws FileNotFoundException, JRDFoxException {
+
+        load(inputDataFile, fullTGDs);
+
+        HashMap<String, String> exportParameters = new HashMap<String, String>();
+        exportParameters.put("fact-domain", "IDB");
+        dsConn.exportData(prefixes, outputStream, exportFormat, exportParameters);
+
+        return getTripleCount(dsConn, "IDB");
+    }
+
+    @Override
+    public long materialize(String inputDataFile, Collection<TGD> fullTGDs, String outputFile)
+            throws JRDFoxException, FileNotFoundException {
+
+        load(inputDataFile, fullTGDs);
+
+        HashMap<String, String> exportParameters = new HashMap<String, String>();
+        exportParameters.put("fact-domain", "IDB");
+        dsConn.exportData(prefixes, new File(outputFile), exportFormat, exportParameters);
+
+        return getTripleCount(dsConn, "IDB");
+    }
+
+    protected void load(String inputDataFile, Collection<TGD> fullTGDs) throws JRDFoxException, FileNotFoundException {
+        // clear every data and rule
+        reset();
+
+        // import the data file
+        InputStream dataStream = new BufferedInputStream(new FileInputStream(inputDataFile));
+        dsConn.importData(UpdateType.ADDITION, prefixes, dataStream);
+
+        // import the rules generated from the fullTGDs
+        Collection<Rule> rules = new ArrayList<>();
+        for (TGD fullTGD : fullTGDs) {
+            for (Rule generatedRule : RDFoxFactory.createDatalogRule(fullTGD)) {
+                rules.add(generatedRule);
+            }
+        }
+        dsConn.addRules(rules);
+    }
+
+    protected void reset() throws JRDFoxException {
+        dsConn.clear();
+        prefixes.clear();
+    }
+
+    protected static long getTripleCount(DataStoreConnection dsConn, String queryDomain) throws JRDFoxException {
+        HashMap<String, String> parameters = new HashMap<>();
+        parameters.put("fact-domain", queryDomain);
+
+        try (Cursor cursor = dsConn.createCursor(null, Prefixes.s_emptyPrefixes, "SELECT ?s ?p ?o WHERE {?s ?p ?o}",
+                parameters)) {
+            dsConn.begin(TransactionType.READ_ONLY);
+            try {
+                long result = 0;
+                for (long multiplicity = cursor.open(); multiplicity != 0; multiplicity = cursor.advance()) {
+                    result += multiplicity;
+                }
+
+                return result;
+            } finally {
+                dsConn.rollbackTransaction();
+            }
+        }
+
+    }
+
+}

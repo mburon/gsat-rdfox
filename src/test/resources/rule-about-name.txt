@@ -1,0 +1,1 @@
+<https://oxfordsemantic.tech/RDFox/getting-started/name>[?x,?y] :- <https://oxfordsemantic.tech/RDFox/getting-started/forename>[?x,?y].

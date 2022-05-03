@@ -5,10 +5,12 @@ import java.util.List;
 
 import org.apache.commons.lang3.NotImplementedException;
 
+import tech.oxfordsemantic.jrdfox.logic.Datatype;
 import tech.oxfordsemantic.jrdfox.logic.datalog.BodyFormula;
 import tech.oxfordsemantic.jrdfox.logic.datalog.Rule;
 import tech.oxfordsemantic.jrdfox.logic.datalog.TupleTableAtom;
 import tech.oxfordsemantic.jrdfox.logic.expression.IRI;
+import tech.oxfordsemantic.jrdfox.logic.expression.Literal;
 import tech.oxfordsemantic.jrdfox.logic.expression.Term;
 import tech.oxfordsemantic.jrdfox.logic.expression.Variable;
 import uk.ac.ox.cs.pdq.fol.Atom;
@@ -69,8 +71,9 @@ public class RDFoxFactory {
         if (term.isVariable()) {
             return Variable.create(((uk.ac.ox.cs.pdq.fol.Variable) term).getSymbol());
         } else if (term.isUntypedConstant()) {
-            throw new NotImplementedException(
-                    "The translation from PDQ constant to RDFox constant is not yet implemented");
+            return Literal.create(term.toString(), Datatype.XSD_STRING);
+            // throw new NotImplementedException(
+                    // "The translation from PDQ constant to RDFox constant is not yet implemented");
         } else {
             String message = String.format("The term %s seems to be neither a variable nor a constant, so it can not be translated as a RDFox object", term);
             throw new IllegalStateException(message);

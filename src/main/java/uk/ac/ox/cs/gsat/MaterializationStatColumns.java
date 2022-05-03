@@ -1,4 +1,4 @@
-package uk.ac.ox.cs.gsat.rdfox;
+package uk.ac.ox.cs.gsat;
 
 import uk.ac.ox.cs.gsat.rdfox.statistics.StatisticsColumn;
 
@@ -12,7 +12,15 @@ public enum MaterializationStatColumns implements StatisticsColumn {
     MAT_SIZE,
     // time required to generated the input
     MAT_GEN_TIME,
-    // time of the materialization
-    MAT_TIME
+    // time required to initialize the materialization system
+    MAT_INIT_TIME,
+    // time required to load the data
+    MAT_DATA_LOAD_TIME,
+    // time of the materialization process (applying the rules)
+    MAT_TIME,
+    // time required to write the output
+    MAT_WRITING_TIME,
+    // total time of the materialization process
+    MAT_TOTAL
 
 }

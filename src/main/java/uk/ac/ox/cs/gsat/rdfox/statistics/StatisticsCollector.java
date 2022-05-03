@@ -30,10 +30,10 @@ import com.google.common.collect.Table;
  * A statistictic collection, which keeps various values (times, cardinalities) in a table 
  * structure.
  */
-public class StatisticsCollector extends Observable {
+public class StatisticsCollector<T extends StatisticsColumn> extends Observable {
 
 	/** The values. */
-	private final Table<String, StatisticsColumn, Object> cells = HashBasedTable.create();
+	private final Table<String, T, Object> cells = HashBasedTable.create();
 
 	/** The stop watches currently in use. */
 	private final Map<String, StopWatch> stopWatchs = Maps.newLinkedHashMap();
@@ -48,7 +48,7 @@ public class StatisticsCollector extends Observable {
 	/**
 	 * @return the whole statistics table
 	 */
-	public Table<String, StatisticsColumn, Object> cells() {
+	public Table<String, T, Object> cells() {
 		return this.cells;
 	}
 	
@@ -59,7 +59,7 @@ public class StatisticsCollector extends Observable {
 	 * @param col the column
 	 * @param val the value
 	 */
-	public void put(Object row, StatisticsColumn col, Object val) {
+	public void put(Object row, T col, Object val) {
 		String key = String.valueOf(row);
 		this.cells.put(key, col, val);
 	}
@@ -70,7 +70,7 @@ public class StatisticsCollector extends Observable {
 	 * @param row the row
 	 * @param col the column
 	 */
-	public void incr(Object row, StatisticsColumn col) {
+	public void incr(Object row, T col) {
         String key = String.valueOf(row);
         Integer oldValue = (Integer) this.cells.get(row, col);
         int value;
@@ -176,7 +176,7 @@ public class StatisticsCollector extends Observable {
 	 * @param row the row's name
 	 * @param col the column
 	 */
-	public void tick(Object row, StatisticsColumn col) {
+	public void tick(Object row, T col) {
 		String key = String.valueOf(row);
 		StopWatch sw = getOrFail(key);
 		long lap = sw.lap();
@@ -192,7 +192,7 @@ public class StatisticsCollector extends Observable {
 	 *
 	 * @param row the row's name
 	 */
-	public void stop(Object row, StatisticsColumn totalTimeColumn) {
+	public void stop(Object row, T totalTimeColumn) {
 		String key = String.valueOf(row);
 		StopWatch sw = getOrFail(key);
 		cells.put(key, totalTimeColumn, sw.total());

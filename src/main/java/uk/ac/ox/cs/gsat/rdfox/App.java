@@ -25,6 +25,7 @@ import tech.oxfordsemantic.jrdfox.exceptions.JRDFoxException;
 import tech.oxfordsemantic.jrdfox.logic.expression.IRI;
 import tech.oxfordsemantic.jrdfox.logic.sparql.pattern.TriplePattern;
 import uk.ac.ox.cs.gsat.DLGPIO;
+import uk.ac.ox.cs.gsat.MaterializationStatColumns;
 import uk.ac.ox.cs.gsat.rdfox.statistics.StatisticsCollector;
 import uk.ac.ox.cs.gsat.rdfox.statistics.StatisticsLogger;
 import uk.ac.ox.cs.pdq.fol.Atom;
@@ -36,45 +37,45 @@ public class App {
 
     private final static String INPUT_REGEX = ".*\\.rul";
     private final static String STATS_FILENAME = "mat-stats.csv";
-    
+
     public static void main(String[] args) throws Exception {
-        StatisticsCollector statsCollector = new StatisticsCollector();
+        StatisticsCollector<MaterializationStatColumns> statsCollector = new StatisticsCollector<>();
         StatisticsLogger statsLogger;
 
-        
-        if (args.length == 1) {
-            // with the only argument can be either the path to a TGDs file or a directory to browse
-            
+        if (args.length == 2 && isInt(args[1])) {
+            int scaleFactor = Integer.parseInt(args[1]);
+            // with the first argument can be either the path to a TGDs file or a directory
+            // to browse
+
             if (new File(args[0]).isDirectory()) {
                 String inputDirectory = getAbsolutePath(args[0]);
 
                 statsLogger = getStatisticsLogger(statsCollector, inputDirectory);
-                
+
                 List<String> tgdsPaths = Files
                         .find(Paths.get(inputDirectory), 999,
                                 (p, bfa) -> bfa.isRegularFile() && p.getFileName().toString().matches(INPUT_REGEX))
-                    .map(p -> p.toString())
-                    .collect(Collectors.toList());
+                        .map(p -> p.toString()).collect(Collectors.toList());
 
                 Collections.sort(tgdsPaths);
-                
+
                 statsLogger.printHeader();
                 for (String tgdsPath : tgdsPaths) {
-                    runFromTGDFile(tgdsPath, statsCollector);
+                    runFromTGDFile(tgdsPath, statsCollector,scaleFactor);
                     statsLogger.printRow(getRowName(tgdsPath));
                 }
-                
+
             } else {
                 String tgdsPath = getAbsolutePath(args[0]);
 
                 statsLogger = getStatisticsLogger(statsCollector, null);
-                
-                runFromTGDFile(tgdsPath, statsCollector);
+
+                runFromTGDFile(tgdsPath, statsCollector, scaleFactor);
                 statsLogger.printHeader();
                 statsLogger.printRow(getRowName(tgdsPath));
             }
 
-        } else if(args.length == 2 || args.length == 3) {
+        } else if (args.length == 2 || args.length == 3) {
             // with 2 or 3 arguments
             // the first argument is a data file
             String dataPath = getAbsolutePath(args[0]);
@@ -83,7 +84,7 @@ public class App {
             // the materialization file is given or induced
             String outputPath;
 
-            if (args.length == 2 ) {
+            if (args.length == 2) {
                 outputPath = getMaterializationPath(tgdsPath);
             } else {
                 outputPath = getAbsolutePath(args[2]);
@@ -97,17 +98,18 @@ public class App {
             statsLogger.printRow(getRowName(tgdsPath));
 
         } else {
-            System.out.println("the arguments are: <tgds file or directory containing tgds files>");
+            System.out.println("the arguments are: <tgds file or directory containing tgds files> <scale factor>");
             System.out.println("the arguments are: <input data file> <rule file> [<output file>]");
             System.out.println(
-                    "if <input data file> is not given then the input data will be generated automatically into a NTriple file from the TGDs");
+                    "if <input data file> is not given then the input data will be generated automatically into a NTriple file from the TGDs using WatDiv");
             return;
         }
 
         statsLogger.close();
     }
 
-    public static void runFromTGDFile(String tgdsPath, StatisticsCollector statsCollector) throws IOException, JRDFoxException {
+    public static void runFromTGDFile(String tgdsPath, StatisticsCollector<MaterializationStatColumns> statsCollector,
+            int scaleFactor) throws IOException, JRDFoxException {
 
         Collection<TGD> fullTGDs;
         try {
@@ -121,7 +123,7 @@ public class App {
         String inputPath = getInputPath(tgdsPath);
         String outputPath = getMaterializationPath(tgdsPath);
         statsCollector.start(rowName);
-        int inputSize = generateNTriplesFromTGDs(fullTGDs, inputPath);
+        int inputSize = generateNTriplesFromTGDs(fullTGDs, inputPath, scaleFactor);
         statsCollector.tick(rowName, MaterializationStatColumns.MAT_GEN_TIME);
         statsCollector.put(rowName, MaterializationStatColumns.MAT_GEN_SIZE, inputSize);
 
@@ -129,17 +131,18 @@ public class App {
     }
 
     public static void run(String inputPath, Collection<TGD> fullTGDs, String materializationPath,
-            StatisticsCollector statsCollector, String rowName) throws FileNotFoundException, JRDFoxException {
-        RDFoxMaterializer materializer = new RDFoxMaterializer();
-
-        statsCollector.put(rowName, MaterializationStatColumns.MAT_FTGD_NB, fullTGDs.size());
+            StatisticsCollector<MaterializationStatColumns> statsCollector, String rowName)
+            throws FileNotFoundException, JRDFoxException {
         statsCollector.resume(rowName);
-        long materizationSize = materializer.materialize(inputPath, fullTGDs, materializationPath);
-        statsCollector.tick(rowName, MaterializationStatColumns.MAT_TIME);
-        statsCollector.put(rowName, MaterializationStatColumns.MAT_SIZE, materizationSize);
+        RDFoxMaterializer materializer = new RDFoxMaterializer();
+        materializer.setStatsCollector(rowName, statsCollector);
+        statsCollector.tick(rowName, MaterializationStatColumns.MAT_INIT_TIME);
+        statsCollector.put(rowName, MaterializationStatColumns.MAT_FTGD_NB, fullTGDs.size());
+
+        materializer.materialize(inputPath, fullTGDs, materializationPath);
     }
 
-    public static Collection<TGD> parseDLGP(String tgdsPath) throws Exception  {
+    public static Collection<TGD> parseDLGP(String tgdsPath) throws Exception {
         System.out.println(String.format("Parsing %s ...", tgdsPath));
         DLGPIO parser = new DLGPIO(tgdsPath, false);
 
@@ -161,10 +164,14 @@ public class App {
     }
 
     public static String getMaterializationPath(String tgdPath) {
-        return Paths.get(tgdPath).getParent().resolve(FilenameUtils.getBaseName(tgdPath) + "-mat.nt").toString();
+        String result = Paths.get(tgdPath).getParent().resolve(FilenameUtils.getBaseName(tgdPath) + "-mat.nt")
+                .toString();
+        System.out.println(String.format("The materialization path is: %s", result));
+        return result;
     }
 
-    public static StatisticsLogger getStatisticsLogger(StatisticsCollector statsCollector, String inputDirectory) throws FileNotFoundException {
+    public static StatisticsLogger getStatisticsLogger(StatisticsCollector statsCollector, String inputDirectory)
+            throws FileNotFoundException {
 
         StatisticsLogger statsLogger;
         if (inputDirectory != null) {
@@ -180,13 +187,19 @@ public class App {
         return statsLogger;
     }
 
+    public static int generateNTriplesFromTGDs(Collection<TGD> tgds, String inputPath, int scaleFactor)
+            throws IOException {
+
+        WatDivGenerator generator = new WatDivGenerator(tgds, inputPath, scaleFactor);
+        return generator.generate();
+    }
+
     /**
-     * write a Ntriple files containing triples of the following forms 
-     * c rdf:type P or c P c whether the predicate P is unary or binary
-     * with c being a fixed IRI 
-     * The used predicates P are those in the body of the tgd but in their head 
+     * write a Ntriple files containing triples of the following forms c rdf:type P
+     * or c P c whether the predicate P is unary or binary with c being a fixed IRI
+     * The used predicates P are those in the body of the tgd but in their head
      */
-    public static int generateNTriplesFromTGDs(Collection<TGD> tgds, String fileName) throws IOException {
+    public static int generateNTriplesFromTGDsOld(Collection<TGD> tgds, String fileName) throws IOException {
 
         Set<Predicate> bodyPredicates = new HashSet<>();
         Set<Predicate> headPredicates = new HashSet<>();
@@ -238,4 +251,15 @@ public class App {
         return new File(relativePath).getAbsolutePath();
     }
 
+    public static boolean isInt(String strNum) {
+        if (strNum == null) {
+            return false;
+        }
+        try {
+            int d = Integer.parseInt(strNum);
+        } catch (NumberFormatException nfe) {
+            return false;
+        }
+        return true;
+    }
 }

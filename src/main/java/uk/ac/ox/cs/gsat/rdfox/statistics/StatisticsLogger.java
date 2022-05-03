@@ -50,7 +50,7 @@ public class StatisticsLogger implements AutoCloseable, Observer {
 	private final PrintStream out;
 
 	/** The outputs. */
-	private final StatisticsCollector stats;
+	private final StatisticsCollector<? extends StatisticsColumn> stats;
 
 	/** The command line properties. */
 	private final Properties commandLine;
@@ -74,7 +74,7 @@ public class StatisticsLogger implements AutoCloseable, Observer {
 	 *
 	 * @param stats the statistics collection object
 	 */
-	public StatisticsLogger(StatisticsCollector stats) {
+	public StatisticsLogger(StatisticsCollector<? extends StatisticsColumn> stats) {
 		this(System.out, stats, new Properties());
 	}
 	
@@ -83,7 +83,7 @@ public class StatisticsLogger implements AutoCloseable, Observer {
 	 *
 	 * @param stats the statistics collection object
 	 */
-	public StatisticsLogger(StatisticsCollector stats, Properties cmdLine) {
+	public StatisticsLogger(StatisticsCollector<? extends StatisticsColumn> stats, Properties cmdLine) {
 		this(System.out, stats, cmdLine);
 	}
 
@@ -93,7 +93,7 @@ public class StatisticsLogger implements AutoCloseable, Observer {
 	 * @param out the output print stream
 	 * @param stats the statistics collection object
 	 */
-	public StatisticsLogger(PrintStream out, StatisticsCollector stats) {
+	public StatisticsLogger(PrintStream out, StatisticsCollector<? extends StatisticsColumn> stats) {
         this(out, stats, new Properties());
 	}
 
@@ -103,7 +103,7 @@ public class StatisticsLogger implements AutoCloseable, Observer {
 	 * @param out the output print stream
 	 * @param stats the statistics collection object
 	 */
-	public StatisticsLogger(PrintStream out, StatisticsCollector stats, Properties cmdLine) {
+	public StatisticsLogger(PrintStream out, StatisticsCollector<? extends StatisticsColumn> stats, Properties cmdLine) {
 		this.out = out;
 		this.stats = stats;
 		this.commandLine = cmdLine;
@@ -217,7 +217,7 @@ public class StatisticsLogger implements AutoCloseable, Observer {
 	 * @param rowName the name of the row to print
 	 */
 	public void printRow(String rowName) {
-		Map<StatisticsColumn, Object> row = this.stats.cells().row(rowName);
+		Map<? extends StatisticsColumn, Object> row = this.stats.cells().row(rowName);
 		StringBuilder result = new StringBuilder(rowName);
 		for (StatisticsColumn col: sortHeader()) {
 			result.append('\t').append(row.getOrDefault(col, MISSING_VALUE));
@@ -231,9 +231,10 @@ public class StatisticsLogger implements AutoCloseable, Observer {
 	public void printAll() {
 		// Ensuring the column order is preserve across lines.
 		List<StatisticsColumn> cols = sortHeader();
-		for (Entry<String, Map<StatisticsColumn, Object>> entry: this.stats.cells().rowMap().entrySet()) {
-			StringBuilder result = new StringBuilder(entry.getKey());
-			Map<StatisticsColumn, Object> row = entry.getValue();
+        for(String key : this.stats.cells().rowKeySet()) {
+			StringBuilder result = new StringBuilder(key);
+            Map<? extends StatisticsColumn, Object> row = this.stats.cells().row(key);
+
 			for (StatisticsColumn col: cols) {
 				result.append('\t').append(row.getOrDefault(col, MISSING_VALUE));
 			}
@@ -244,7 +245,7 @@ public class StatisticsLogger implements AutoCloseable, Observer {
 	/**
 	 * @return the output stream of this logger
 	 */
-	public StatisticsCollector stats() {
+	public StatisticsCollector<? extends StatisticsColumn> stats() {
 		return this.stats;
 	}
 
@@ -277,7 +278,7 @@ public class StatisticsLogger implements AutoCloseable, Observer {
 			printProlog();
 			hasPrintedProlog = true;
 		}
-		Set<StatisticsColumn> header = this.stats.cells().columnKeySet();
+		Set<? extends StatisticsColumn> header = this.stats.cells().columnKeySet();
 		if (!header.equals(lastHeader)) {
 			lastHeader = new HashSet<StatisticsColumn>();
             lastHeader.addAll(header);

@@ -1,9 +1,11 @@
 package uk.ac.ox.cs.gsat.rdfox;
 
 import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
@@ -15,13 +17,14 @@ import tech.oxfordsemantic.jrdfox.Prefixes;
 import tech.oxfordsemantic.jrdfox.client.ConnectionFactory;
 import tech.oxfordsemantic.jrdfox.client.Cursor;
 import tech.oxfordsemantic.jrdfox.client.DataStoreConnection;
-import tech.oxfordsemantic.jrdfox.client.RuleInfo;
 import tech.oxfordsemantic.jrdfox.client.ServerConnection;
 import tech.oxfordsemantic.jrdfox.client.TransactionType;
 import tech.oxfordsemantic.jrdfox.client.UpdateType;
 import tech.oxfordsemantic.jrdfox.exceptions.JRDFoxException;
 import tech.oxfordsemantic.jrdfox.logic.datalog.Rule;
+import uk.ac.ox.cs.gsat.MaterializationStatColumns;
 import uk.ac.ox.cs.gsat.Materializer;
+import uk.ac.ox.cs.gsat.rdfox.statistics.StatisticsCollector;
 import uk.ac.ox.cs.pdq.fol.TGD;
 
 public class RDFoxMaterializer implements Materializer {
@@ -37,6 +40,8 @@ public class RDFoxMaterializer implements Materializer {
     protected final ServerConnection sConn;
     protected final DataStoreConnection dsConn;
     protected final Prefixes prefixes = new Prefixes();
+    private StatisticsCollector<MaterializationStatColumns> statsCollector;
+    private String statsRowName;
 
     public RDFoxMaterializer() throws JRDFoxException {
 
@@ -49,6 +54,7 @@ public class RDFoxMaterializer implements Materializer {
         try {
             String[] warnings = ConnectionFactory.startLocalServer(serverParameters);
         } catch (JRDFoxException e) {
+            e.printStackTrace();
         }
 
         if (ConnectionFactory.getNumberOfLocalServerRoles() == 0) {
@@ -73,21 +79,19 @@ public class RDFoxMaterializer implements Materializer {
         HashMap<String, String> exportParameters = new HashMap<String, String>();
         exportParameters.put("fact-domain", "IDB");
         dsConn.exportData(prefixes, outputStream, exportFormat, exportParameters);
+        statsCollector.tick(statsRowName, MaterializationStatColumns.MAT_WRITING_TIME);
 
-        return getTripleCount(dsConn, "IDB");
+        long materializationSize = getTripleCount(dsConn, "IDB");
+        statsCollector.stop(statsRowName, MaterializationStatColumns.MAT_TOTAL);
+        statsCollector.put(statsRowName, MaterializationStatColumns.MAT_SIZE, materializationSize);
+
+        return materializationSize;
     }
 
     @Override
     public long materialize(String inputDataFile, Collection<TGD> fullTGDs, String outputFile)
             throws JRDFoxException, FileNotFoundException {
-
-        load(inputDataFile, fullTGDs);
-
-        HashMap<String, String> exportParameters = new HashMap<String, String>();
-        exportParameters.put("fact-domain", "IDB");
-        dsConn.exportData(prefixes, new File(outputFile), exportFormat, exportParameters);
-
-        return getTripleCount(dsConn, "IDB");
+        return materialize(inputDataFile, fullTGDs, new BufferedOutputStream(new FileOutputStream(outputFile)));
     }
 
     protected void load(String inputDataFile, Collection<TGD> fullTGDs) throws JRDFoxException, FileNotFoundException {
@@ -97,7 +101,8 @@ public class RDFoxMaterializer implements Materializer {
         // import the data file
         InputStream dataStream = new BufferedInputStream(new FileInputStream(inputDataFile));
         dsConn.importData(UpdateType.ADDITION, prefixes, dataStream);
-
+        statsCollector.tick(statsRowName, MaterializationStatColumns.MAT_DATA_LOAD_TIME);
+        
         // import the rules generated from the fullTGDs
         Collection<Rule> rules = new ArrayList<>();
         for (TGD fullTGD : fullTGDs) {
@@ -106,6 +111,7 @@ public class RDFoxMaterializer implements Materializer {
             }
         }
         dsConn.addRules(rules);
+        statsCollector.tick(statsRowName, MaterializationStatColumns.MAT_TIME);
     }
 
     protected void reset() throws JRDFoxException {
@@ -132,6 +138,12 @@ public class RDFoxMaterializer implements Materializer {
             }
         }
 
+    }
+
+    @Override
+    public void setStatsCollector(String rowName, StatisticsCollector<MaterializationStatColumns> statsCollector) {
+        this.statsCollector = statsCollector;
+        this.statsRowName = rowName;
     }
 
 }

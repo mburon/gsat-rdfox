@@ -3,6 +3,7 @@ package uk.ac.ox.cs.gsat;
 import java.io.OutputStream;
 import java.util.Collection;
 
+import uk.ac.ox.cs.gsat.rdfox.statistics.StatisticsCollector;
 import uk.ac.ox.cs.pdq.fol.TGD;
 
 
@@ -20,4 +21,7 @@ public interface Materializer {
      * Returns the number of materialized facts
      */
     public long materialize(String inputDataFile, Collection<TGD> fullTGDs, String outputFile) throws Exception;
+
+
+    public void setStatsCollector(String rowName, StatisticsCollector<MaterializationStatColumns> statsCollector);
 }

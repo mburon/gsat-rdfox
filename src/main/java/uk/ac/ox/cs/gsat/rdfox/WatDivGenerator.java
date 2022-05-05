@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -118,13 +119,18 @@ public class WatDivGenerator {
             // System.out.println(p);
         }
 
-        for (Predicate p : roleDomainConcepts.keySet()) {
-            System.out.println("Role " + p + " with domains " + roleDomainConcepts.get(p));
+        for (Predicate p : roles) {
+            namespacedConcept.put(p, getNamespaced(p));
+            // System.out.println(p);
         }
 
-        for (Predicate p : roleRangeConcepts.keySet()) {
-            System.out.println("Role " + p + " with ranges " + roleRangeConcepts.get(p));
-        }
+        // for (Predicate p : roleDomainConcepts.keySet()) {
+        //     System.out.println("Role " + p + " with domains " + roleDomainConcepts.get(p));
+        // }
+
+        // for (Predicate p : roleRangeConcepts.keySet()) {
+        //     System.out.println("Role " + p + " with ranges " + roleRangeConcepts.get(p));
+        // }
 
         // write the watdiv schema to a file
         File file = new File(watdivPath);
@@ -156,25 +162,53 @@ public class WatDivGenerator {
 
         BufferedWriter writer = new BufferedWriter(new FileWriter(this.dataPath));
 
+        // compile the concept name replacement map
+        int subKeyLength = 5;
+        Map<String, String> conceptReplacement = new HashMap<>();
+        for (Predicate concept : concepts) {
+            String conceptName = concept.toString();
+            conceptReplacement.put("<" + conceptName + "0>", "<" + conceptName + ">");
+        }
+
         int count = 0;
         while((line = out.readLine()) != null) {
             count++;
+            line = line.trim();
+            String[] iris = line.split("\\s+");
             // remove the suffix "0" from the concept name
-            for (Predicate concept : concepts) {
-                line = line.replace(concept.toString() + "0>", concept.toString() + ">");
+            if (iris[1].equals("<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>")) {
+                iris[2] = conceptReplacement.getOrDefault(iris[2], iris[2]);
             }
 
-            writer.write(line);
+            writer.write(String.join(" ", iris));
             writer.write("\n");
         }
 
         writer.close();
+
+        try {
+            process.waitFor();
+        } catch (InterruptedException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+        
+        if (process.exitValue() != 0 || process.getErrorStream().available() != 0) {
+            System.out.println("Watdiv returns an error !!");
+            process.getErrorStream().transferTo(System.out);
+            System.out.println();
+        }
+        
         return count;
     }
 
     private String getNamespaced(Predicate predicate) {
+
+        if (namespacedConcept.containsKey(predicate))
+            return namespacedConcept.get(predicate);
+        
         String name = predicate.toString();
-        int indexOfSlash = name.lastIndexOf('#');
+        int indexOfSlash = (name.lastIndexOf('#') != -1) ? name.lastIndexOf('#') : name.lastIndexOf('/');
         String namespaceURL = name.substring(0, indexOfSlash +1);
         String prefix; 
         String localPath = name.substring(indexOfSlash +1);
@@ -238,7 +272,7 @@ public class WatDivGenerator {
         int normalizedConceptFactor = Math.max(1, (CONCEPT_FACTOR / concepts.size()));
         
         for (Predicate concept : concepts) {
-            String conceptName = namespacedConcept.get(concept);
+            String conceptName = getNamespaced(concept);
             writer.write("// Meta concept \n");
             writer.write("<type*> ");
             writer.write(conceptName);
@@ -257,7 +291,7 @@ public class WatDivGenerator {
             Set<Predicate> inter = conceptIntersections.getOrDefault(concept, Set.of());
             double prob = 1.0 / inter.size();
             for (Predicate other : inter) {
-                String otherName = namespacedConcept.get(other);
+                String otherName = getNamespaced(other);
                 writer.write(
                         "#association	" + conceptName + "Entity 	rdf:type 		" + otherName +"	2 1		"+ prob +"	UNIFORM\n\n");
             }
